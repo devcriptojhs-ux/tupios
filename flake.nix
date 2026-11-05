@@ -31,7 +31,13 @@
         };
 
         # IA — AI Core container (Fase 4)
-        # tupi-ia = nixpkgs.lib.nixosSystem { ... };
+        # Backend remoto é o padrão; Ollama local habilitável via tupi.ai.local.enable = true
+        tupi-ia = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            ./nixos/ia/configuration.nix
+          ];
+        };
 
         # SEC — Safety Core rescue (Fase 3)
         tupi-sec = nixpkgs.lib.nixosSystem {
