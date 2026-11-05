@@ -142,10 +142,10 @@
 
  <div class="status-bar">
  <h2>📊 Status Geral</h2>
- <p><strong>Última atualização:</strong> 2026-11-06 17:25</p>
- <p><strong>Fases concluídas:</strong> 6 de 10 (60%)</p>
+ <p><strong>Última atualização:</strong> 2026-11-06 17:35</p>
+ <p><strong>Fases concluídas:</strong> 7 de 10 (70%)</p>
  <div class="progress-bar">
- <div class="progress-fill" style="width: 60%"></div>
+ <div class="progress-fill" style="width: 70%"></div>
  </div>
  </div>
 
@@ -210,24 +210,24 @@
  <div class="phase-details">Scaffold completo | Commit 62d4663</div>
  </div>
 
- <div class="phase-card in-progress">
+ <div class="phase-card completed">
  <div class="phase-header">
  <span class="phase-number">Fase 7</span>
- <span class="phase-status">🔄</span>
+ <span class="phase-status">✅</span>
  </div>
  <div class="phase-title">Agent Orchestrator</div>
- <div class="phase-description">Orquestrador de agentes com Memory Engine e comunicação MCP</div>
- <div class="phase-details">Em implementação...</div>
+ <div class="phase-description">Orquestrador de agentes com Memory Engine SQLite e comunicação MCP via Unix socket</div>
+ <div class="phase-details">Validado com nix flake check ✅ | Commit 61a72c7</div>
  </div>
 
- <div class="phase-card pending">
+ <div class="phase-card in-progress">
  <div class="phase-header">
  <span class="phase-number">Fase 8</span>
- <span class="phase-status">⏳</span>
+ <span class="phase-status">🔄</span>
  </div>
  <div class="phase-title">Desktop Próprio</div>
- <div class="phase-description">Desktop TUPIOS em Rust + SvelteKit substituindo Sway</div>
- <div class="phase-details">Pendente</div>
+ <div class="phase-description">Desktop TUPIOS em Rust + SvelteKit substituindo Sway como compositor Wayland nativo</div>
+ <div class="phase-details">Em implementação...</div>
  </div>
 
  <div class="phase-card pending">
@@ -254,12 +254,16 @@
  <div class="log-section">
  <h2>📝 Log de Atividade</h2>
  <div class="log-entry">
- <span class="log-time">[17:25]</span>
- <span>Fase 6 concluída (commit 62d4663) — Control Center scaffold Tauri + SvelteKit</span>
+ <span class="log-time">[17:35]</span>
+ <span>Fase 7 concluída e validada (commit 61a72c7) — Agent Orchestrator + Memory Engine + MCP</span>
  </div>
  <div class="log-entry">
- <span class="log-time">[17:20]</span>
- <span>Iniciando Fase 7: Agent Orchestrator (Memory Engine + MCP)</span>
+ <span class="log-time">[17:30]</span>
+ <span>Iniciando Fase 8: Desktop Próprio (Rust + SvelteKit Wayland compositor)</span>
+ </div>
+ <div class="log-entry">
+ <span class="log-time">[17:25]</span>
+ <span>Fase 6 concluída (commit 62d4663) — Control Center scaffold Tauri + SvelteKit</span>
  </div>
  <div class="log-entry">
  <span class="log-time">[17:15]</span>
@@ -270,10 +274,6 @@
  <span>Fase 4 concluída e validada (commit 75314b4)</span>
  </div>
  <div class="log-entry">
- <span class="log-time">[16:40]</span>
- <span>Adendo aplicado: Ollama opcional, backend remoto como padrão</span>
- </div>
- <div class="log-entry">
  <span class="log-time">[16:35]</span>
  <span>Iniciando execução automática das próximas fases</span>
  </div>
@@ -281,7 +281,6 @@
  </div>
 
  <script>
- // Auto-refresh a cada 30 segundos para monitorar progresso
  setTimeout(() => location.reload(), 30000);
  </script>
 </body>

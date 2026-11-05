@@ -99,7 +99,7 @@ let
               if method == "memory/store":
                   perm = check_permission(agent_id, "write_user_data", "/var/lib/tupi-agents/memory")
                   if perm["decision"] != "allow":
-                      return {"error": f"Permission denied: {perm['reason']}"}
+                      return {"error": "Permission denied: " + perm.get("reason", "unknown")}
                   store_memory(agent_id, params.get("session_id", ""), params.get("role", "unknown"), params.get("content", ""), params.get("metadata"))
                   return {"status": "stored", "agent_id": agent_id}
 
@@ -126,7 +126,7 @@ let
                   return {"status": "ok", "uptime": time.time(), "db": MEMORY_DB}
 
               else:
-                  return {"error": f"Unknown method: {method}"}
+                  return {"error": "Unknown method: " + method}
 
           except Exception as e:
               return {"error": str(e)}

@@ -171,6 +171,7 @@
   imports = [
     ../modules/permission-manager.nix
     ../modules/agent-orchestrator.nix
+    ../modules/tupi-desktop.nix
   ];
 
   # === Permission Manager (Fase 5) ===
@@ -178,6 +179,9 @@
 
   # === Agent Orchestrator (Fase 7) ===
   tupi.agentOrchestrator.enable = true;
+
+  # === TUPIOS Native Desktop (Fase 8) ===
+  tupi.desktop.enable = true;
 
   # === Segurança Básica (Fase 1) ===
   security.apparmor.enable = true;
