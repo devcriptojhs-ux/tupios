@@ -34,12 +34,26 @@
   # === Calamares Installer ===
   services.calamares.enable = true;
 
-  # === First-Boot Wizard Script ===
+  # === First-Boot Wizard Script + Essential Packages ===
   environment.systemPackages = with pkgs; [
     git
     btrfs-progs
     curl
     jq
+    vim
+    htop
+    btop
+    firefox
+    pcmanfm
+    alacritty
+    sway
+    waybar
+    wl-clipboard
+    grim
+    slurp
+    python3
+    socat
+    sqlite
     (writeShellScriptBin "tupi-firstboot" ''
       #!/bin/sh
       set -eu
@@ -139,24 +153,6 @@
     "quiet"
     "splash"
     "modprobe.blacklist=nouveau"
-  ];
-
-  # === Include Essential Packages ===
-  environment.systemPackages = with pkgs; [
-    vim
-    htop
-    btop
-    firefox
-    pcmanfm
-    alacritty
-    sway
-    waybar
-    wl-clipboard
-    grim
-    slurp
-    python3
-    socat
-    sqlite
   ];
 
   # === TUPIOS Branding ===
