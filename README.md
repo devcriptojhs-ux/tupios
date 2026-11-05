@@ -27,7 +27,7 @@ TUPIOS é um SO baseado em **NixOS 26.05** projetado em torno de quatro núcleos
 |------------|--------|
 | Architecture Specification (`docs/ARCHITECTURE.md`) | ✅ Concluído |
 | Technical PoC (QEMU) | 🔄 Em progresso |
-| TUPIOS MVP (Fases 1-5) | 🔄 Iniciado |
+| TUPIOS MVP (Fases 1-5) | 🔄 Fase 1 validada (`nix flake check` ✅) |
 
 ## Estrutura do Projeto
 
