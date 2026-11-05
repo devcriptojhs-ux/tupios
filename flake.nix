@@ -23,7 +23,12 @@
         };
 
         # ST — Staging Environment (Fase 2)
-        # tupi-st = nixpkgs.lib.nixosSystem { ... };
+        tupi-st = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            ./nixos/st/configuration.nix
+          ];
+        };
 
         # IA — AI Core container (Fase 4)
         # tupi-ia = nixpkgs.lib.nixosSystem { ... };
