@@ -1,276 +1,284 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TUPIOS — Dashboard de Progresso</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
-      background: #000;
-      color: #fff;
-      padding: 2rem;
-      line-height: 1.6;
-    }
-    .container { max-width: 1200px; margin: 0 auto; }
-    h1 {
-      color: #52EA23;
-      font-size: 2.5rem;
-      margin-bottom: 0.5rem;
-      letter-spacing: 2px;
-    }
-    .subtitle {
-      color: #888;
-      margin-bottom: 2rem;
-      font-size: 0.9rem;
-    }
-    .status-bar {
-      background: #111;
-      border: 1px solid #333;
-      padding: 1rem;
-      margin-bottom: 2rem;
-      border-radius: 4px;
-    }
-    .status-bar h2 {
-      color: #52EA23;
-      font-size: 1rem;
-      margin-bottom: 0.5rem;
-    }
-    .status-bar p { color: #aaa; font-size: 0.85rem; }
-    .phase-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 1rem;
-      margin-bottom: 2rem;
-    }
-    .phase-card {
-      background: #111;
-      border: 1px solid #333;
-      padding: 1.5rem;
-      border-radius: 4px;
-      transition: all 0.3s;
-    }
-    .phase-card.completed {
-      border-color: #52EA23;
-      background: #0a2d0a;
-    }
-    .phase-card.in-progress {
-      border-color: #FFA500;
-      background: #2d1f0a;
-      animation: pulse 2s infinite;
-    }
-    .phase-card.pending {
-      border-color: #555;
-      background: #1a1a1a;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
-    }
-    .phase-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1rem;
-    }
-    .phase-number {
-      font-size: 0.8rem;
-      color: #888;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .phase-status {
-      font-size: 1.5rem;
-    }
-    .phase-title {
-      font-size: 1.1rem;
-      font-weight: bold;
-      margin-bottom: 0.5rem;
-      color: #fff;
-    }
-    .phase-description {
-      font-size: 0.85rem;
-      color: #aaa;
-      margin-bottom: 1rem;
-    }
-    .phase-details {
-      font-size: 0.75rem;
-      color: #666;
-      border-top: 1px solid #333;
-      padding-top: 0.5rem;
-    }
-    .log-section {
-      background: #111;
-      border: 1px solid #333;
-      padding: 1.5rem;
-      border-radius: 4px;
-      margin-top: 2rem;
-    }
-    .log-section h2 {
-      color: #52EA23;
-      font-size: 1rem;
-      margin-bottom: 1rem;
-    }
-    .log-entry {
-      font-size: 0.8rem;
-      color: #aaa;
-      padding: 0.5rem 0;
-      border-bottom: 1px solid #222;
-    }
-    .log-entry:last-child { border-bottom: none; }
-    .log-time { color: #52EA23; margin-right: 1rem; }
-    .progress-bar {
-      width: 100%;
-      height: 8px;
-      background: #333;
-      border-radius: 4px;
-      margin-top: 1rem;
-      overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%;
-      background: #52EA23;
-      transition: width 0.5s;
-    }
-  </style>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>TUPIOS — Dashboard de Progresso</title>
+ <style>
+ * { margin: 0; padding: 0; box-sizing: border-box; }
+ body {
+ font-family: 'JetBrains Mono', 'Fira Code', monospace;
+ background: #000;
+ color: #fff;
+ padding: 2rem;
+ line-height: 1.6;
+ }
+ .container { max-width: 1200px; margin: 0 auto; }
+ h1 {
+ color: #52EA23;
+ font-size: 2.5rem;
+ margin-bottom: 0.5rem;
+ letter-spacing: 2px;
+ }
+ .subtitle {
+ color: #888;
+ margin-bottom: 2rem;
+ font-size: 0.9rem;
+ }
+ .status-bar {
+ background: #111;
+ border: 1px solid #333;
+ padding: 1rem;
+ margin-bottom: 2rem;
+ border-radius: 4px;
+ }
+ .status-bar h2 {
+ color: #52EA23;
+ font-size: 1rem;
+ margin-bottom: 0.5rem;
+ }
+ .status-bar p { color: #aaa; font-size: 0.85rem; }
+ .phase-grid {
+ display: grid;
+ grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+ gap: 1rem;
+ margin-bottom: 2rem;
+ }
+ .phase-card {
+ background: #111;
+ border: 1px solid #333;
+ padding: 1.5rem;
+ border-radius: 4px;
+ transition: all 0.3s;
+ }
+ .phase-card.completed {
+ border-color: #52EA23;
+ background: #0a2d0a;
+ }
+ .phase-card.in-progress {
+ border-color: #FFA500;
+ background: #2d1f0a;
+ animation: pulse 2s infinite;
+ }
+ .phase-card.pending {
+ border-color: #555;
+ background: #1a1a1a;
+ }
+ @keyframes pulse {
+ 0%, 100% { opacity: 1; }
+ 50% { opacity: 0.7; }
+ }
+ .phase-header {
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ margin-bottom: 1rem;
+ }
+ .phase-number {
+ font-size: 0.8rem;
+ color: #888;
+ text-transform: uppercase;
+ letter-spacing: 1px;
+ }
+ .phase-status {
+ font-size: 1.5rem;
+ }
+ .phase-title {
+ font-size: 1.1rem;
+ font-weight: bold;
+ margin-bottom: 0.5rem;
+ color: #fff;
+ }
+ .phase-description {
+ font-size: 0.85rem;
+ color: #aaa;
+ margin-bottom: 1rem;
+ }
+ .phase-details {
+ font-size: 0.75rem;
+ color: #666;
+ border-top: 1px solid #333;
+ padding-top: 0.5rem;
+ }
+ .log-section {
+ background: #111;
+ border: 1px solid #333;
+ padding: 1.5rem;
+ border-radius: 4px;
+ margin-top: 2rem;
+ }
+ .log-section h2 {
+ color: #52EA23;
+ font-size: 1rem;
+ margin-bottom: 1rem;
+ }
+ .log-entry {
+ font-size: 0.8rem;
+ color: #aaa;
+ padding: 0.5rem 0;
+ border-bottom: 1px solid #222;
+ }
+ .log-entry:last-child { border-bottom: none; }
+ .log-time { color: #52EA23; margin-right: 1rem; }
+ .progress-bar {
+ width: 100%;
+ height: 8px;
+ background: #333;
+ border-radius: 4px;
+ margin-top: 1rem;
+ overflow: hidden;
+ }
+ .progress-fill {
+ height: 100%;
+ background: #52EA23;
+ transition: width 0.5s;
+ }
+ </style>
 </head>
 <body>
-  <div class="container">
-    <h1>TUPIOS</h1>
-    <p class="subtitle">Dashboard de Progresso — AI-Native Operating System</p>
+ <div class="container">
+ <h1>TUPIOS</h1>
+ <p class="subtitle">Dashboard de Progresso — AI-Native Operating System</p>
 
-    <div class="status-bar">
-      <h2>📊 Status Geral</h2>
-      <p><strong>Última atualização:</strong> 2026-11-06</p>
-      <p><strong>Fases concluídas:</strong> 4 de 10 (40%)</p>
-      <div class="progress-bar">
-        <div class="progress-fill" style="width: 40%"></div>
-      </div>
-    </div>
+ <div class="status-bar">
+ <h2>📊 Status Geral</h2>
+ <p><strong>Última atualização:</strong> 2026-11-06 17:15</p>
+ <p><strong>Fases concluídas:</strong> 5 de 10 (50%)</p>
+ <div class="progress-bar">
+ <div class="progress-fill" style="width: 50%"></div>
+ </div>
+ </div>
 
-    <div class="phase-grid">
-      <div class="phase-card completed">
-        <div class="phase-header">
-          <span class="phase-number">Fase 1</span>
-          <span class="phase-status">✅</span>
-        </div>
-        <div class="phase-title">Base NixOS + PD</div>
-        <div class="phase-description">NixOS personalizado com Sway, btop, pcmanfm e layout Btrfs</div>
-        <div class="phase-details">Validado com nix flake check ✅</div>
-      </div>
+ <div class="phase-grid">
+ <div class="phase-card completed">
+ <div class="phase-header">
+ <span class="phase-number">Fase 1</span>
+ <span class="phase-status">✅</span>
+ </div>
+ <div class="phase-title">Base NixOS + PD</div>
+ <div class="phase-description">NixOS personalizado com Sway, btop, pcmanfm e layout Btrfs</div>
+ <div class="phase-details">Validado com nix flake check ✅</div>
+ </div>
 
-      <div class="phase-card completed">
-        <div class="phase-header">
-          <span class="phase-number">Fase 2</span>
-          <span class="phase-status">✅</span>
-        </div>
-        <div class="phase-title">ST Isolado + Snapshots</div>
-        <div class="phase-description">Staging Environment com Btrfs snapshots e CLI tupi-snapshot</div>
-        <div class="phase-details">Validado com nix flake check ✅</div>
-      </div>
+ <div class="phase-card completed">
+ <div class="phase-header">
+ <span class="phase-number">Fase 2</span>
+ <span class="phase-status">✅</span>
+ </div>
+ <div class="phase-title">ST Isolado + Snapshots</div>
+ <div class="phase-description">Staging Environment com Btrfs snapshots e CLI tupi-snapshot</div>
+ <div class="phase-details">Validado com nix flake check ✅</div>
+ </div>
 
-      <div class="phase-card completed">
-        <div class="phase-header">
-          <span class="phase-number">Fase 3</span>
-          <span class="phase-status">✅</span>
-        </div>
-        <div class="phase-title">SEC + Recovery TUI</div>
-        <div class="phase-description">Safety Core com Alpine rescue, rollback atômico e TUI tupi-recover</div>
-        <div class="phase-details">Validado com nix flake check ✅</div>
-      </div>
+ <div class="phase-card completed">
+ <div class="phase-header">
+ <span class="phase-number">Fase 3</span>
+ <span class="phase-status">✅</span>
+ </div>
+ <div class="phase-title">SEC + Recovery TUI</div>
+ <div class="phase-description">Safety Core com Alpine rescue, rollback atômico e TUI tupi-recover</div>
+ <div class="phase-details">Validado com nix flake check ✅</div>
+ </div>
 
-      <div class="phase-card completed">
-        <div class="phase-header">
-          <span class="phase-number">Fase 4</span>
-          <span class="phase-status">✅</span>
-        </div>
-        <div class="phase-title">IA Core + Router</div>
-        <div class="phase-description">AI Core com backend remoto default, Ollama opcional e AI Router Python</div>
-        <div class="phase-details">Validado com nix flake check ✅</div>
-      </div>
+ <div class="phase-card completed">
+ <div class="phase-header">
+ <span class="phase-number">Fase 4</span>
+ <span class="phase-status">✅</span>
+ </div>
+ <div class="phase-title">IA Core + Router</div>
+ <div class="phase-description">AI Core com backend remoto default, Ollama opcional e AI Router Python</div>
+ <div class="phase-details">Validado com nix flake check ✅</div>
+ </div>
 
-      <div class="phase-card in-progress">
-        <div class="phase-header">
-          <span class="phase-number">Fase 5</span>
-          <span class="phase-status">🔄</span>
-        </div>
-        <div class="phase-title">Permission Manager + Harness</div>
-        <div class="phase-description">Controle de permissões da IA, System API e Harness Engine para validação de operações</div>
-        <div class="phase-details">Em implementação...</div>
-      </div>
+ <div class="phase-card completed">
+ <div class="phase-header">
+ <span class="phase-number">Fase 5</span>
+ <span class="phase-status">✅</span>
+ </div>
+ <div class="phase-title">Permission Manager + Harness</div>
+ <div class="phase-description">Controle de permissões da IA, System API e Harness Engine para validação de operações</div>
+ <div class="phase-details">Validado com nix flake check ✅ | Commit d360085</div>
+ </div>
 
-      <div class="phase-card pending">
-        <div class="phase-header">
-          <span class="phase-number">Fase 6</span>
-          <span class="phase-status">⏳</span>
-        </div>
-        <div class="phase-title">Control Center</div>
-        <div class="phase-description">TUPIOS Control Center com Tauri + SvelteKit para gerenciamento de commits e permissões</div>
-        <div class="phase-details">Pendente</div>
-      </div>
+ <div class="phase-card in-progress">
+ <div class="phase-header">
+ <span class="phase-number">Fase 6</span>
+ <span class="phase-status">🔄</span>
+ </div>
+ <div class="phase-title">Control Center</div>
+ <div class="phase-description">TUPIOS Control Center com Tauri + SvelteKit para gerenciamento de commits e permissões</div>
+ <div class="phase-details">Em implementação...</div>
+ </div>
 
-      <div class="phase-card pending">
-        <div class="phase-header">
-          <span class="phase-number">Fase 7</span>
-          <span class="phase-status">⏳</span>
-        </div>
-        <div class="phase-title">Agent Orchestrator</div>
-        <div class="phase-description">Orquestrador de agentes com Memory Engine e comunicação MCP</div>
-        <div class="phase-details">Pendente</div>
-      </div>
+ <div class="phase-card pending">
+ <div class="phase-header">
+ <span class="phase-number">Fase 7</span>
+ <span class="phase-status">⏳</span>
+ </div>
+ <div class="phase-title">Agent Orchestrator</div>
+ <div class="phase-description">Orquestrador de agentes com Memory Engine e comunicação MCP</div>
+ <div class="phase-details">Pendente</div>
+ </div>
 
-      <div class="phase-card pending">
-        <div class="phase-header">
-          <span class="phase-number">Fase 8</span>
-          <span class="phase-status">⏳</span>
-        </div>
-        <div class="phase-title">Desktop Próprio</div>
-        <div class="phase-description">Desktop TUPIOS em Rust + SvelteKit substituindo Sway</div>
-        <div class="phase-details">Pendente</div>
-      </div>
+ <div class="phase-card pending">
+ <div class="phase-header">
+ <span class="phase-number">Fase 8</span>
+ <span class="phase-status">⏳</span>
+ </div>
+ <div class="phase-title">Desktop Próprio</div>
+ <div class="phase-description">Desktop TUPIOS em Rust + SvelteKit substituindo Sway</div>
+ <div class="phase-details">Pendente</div>
+ </div>
 
-      <div class="phase-card pending">
-        <div class="phase-header">
-          <span class="phase-number">Fase 9</span>
-          <span class="phase-status">⏳</span>
-        </div>
-        <div class="phase-title">ISO Instalável</div>
-        <div class="phase-description">ISO bootável com instalador Calamares e first-boot wizard</div>
-        <div class="phase-details">Pendente</div>
-      </div>
+ <div class="phase-card pending">
+ <div class="phase-header">
+ <span class="phase-number">Fase 9</span>
+ <span class="phase-status">⏳</span>
+ </div>
+ <div class="phase-title">ISO Instalável</div>
+ <div class="phase-description">ISO bootável com instalador Calamares e first-boot wizard</div>
+ <div class="phase-details">Pendente</div>
+ </div>
 
-      <div class="phase-card pending">
-        <div class="phase-header">
-          <span class="phase-number">Fase 10</span>
-          <span class="phase-status">⏳</span>
-        </div>
-        <div class="phase-title">Testes Hardware + Docs</div>
-        <div class="phase-description">Testes em hardware real, documentação final e release candidate</div>
-        <div class="phase-details">Pendente</div>
-      </div>
-    </div>
+ <div class="phase-card pending">
+ <div class="phase-header">
+ <span class="phase-number">Fase 10</span>
+ <span class="phase-status">⏳</span>
+ </div>
+ <div class="phase-title">Testes Hardware + Docs</div>
+ <div class="phase-description">Testes em hardware real, documentação final e release candidate</div>
+ <div class="phase-details">Pendente</div>
+ </div>
+ </div>
 
-    <div class="log-section">
-      <h2>📝 Log de Atividade</h2>
-      <div class="log-entry">
-        <span class="log-time">[16:45]</span>
-        <span>Fase 4 concluída e validada (commit 75314b4)</span>
-      </div>
-      <div class="log-entry">
-        <span class="log-time">[16:40]</span>
-        <span>Adendo aplicado: Ollama opcional, backend remoto como padrão</span>
-      </div>
-      <div class="log-entry">
-        <span class="log-time">[16:35]</span>
-        <span>Iniciando execução automática das próximas fases</span>
-      </div>
-    </div>
-  </div>
+ <div class="log-section">
+ <h2>📝 Log de Atividade</h2>
+ <div class="log-entry">
+ <span class="log-time">[17:15]</span>
+ <span>Fase 5 concluída e validada (commit d360085) — Permission Manager + Harness Engine</span>
+ </div>
+ <div class="log-entry">
+ <span class="log-time">[17:10]</span>
+ <span>Iniciando Fase 6: Control Center (Tauri + SvelteKit)</span>
+ </div>
+ <div class="log-entry">
+ <span class="log-time">[16:45]</span>
+ <span>Fase 4 concluída e validada (commit 75314b4)</span>
+ </div>
+ <div class="log-entry">
+ <span class="log-time">[16:40]</span>
+ <span>Adendo aplicado: Ollama opcional, backend remoto como padrão</span>
+ </div>
+ <div class="log-entry">
+ <span class="log-time">[16:35]</span>
+ <span>Iniciando execução automática das próximas fases</span>
+ </div>
+ </div>
+ </div>
 
-  <script>
-    // Auto-refresh a cada 30 segundos para monitorar progresso
-    setTimeout(() => location.reload(), 30000);
-  </script>
+ <script>
+ // Auto-refresh a cada 30 segundos para monitorar progresso
+ setTimeout(() => location.reload(), 30000);
+ </script>
 </body>
 </html>
