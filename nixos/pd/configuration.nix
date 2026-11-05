@@ -168,10 +168,16 @@
   swapDevices = [ ];
 
   # === Importar módulos compartilhados ===
-  imports = [ ../modules/permission-manager.nix ];
+  imports = [
+    ../modules/permission-manager.nix
+    ../modules/agent-orchestrator.nix
+  ];
 
   # === Permission Manager (Fase 5) ===
   tupi.permissionManager.enable = true;
+
+  # === Agent Orchestrator (Fase 7) ===
+  tupi.agentOrchestrator.enable = true;
 
   # === Segurança Básica (Fase 1) ===
   security.apparmor.enable = true;
