@@ -1,0 +1,49 @@
+# Nix build artifacts
+result
+result-*
+*.drv
+*.drv.chroot
+
+# Nix store links
+/nix/
+
+# QEMU disk images
+*.img
+*.qcow2
+*.raw
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Secrets (NUNCA commitar)
+*.key
+*.pem
+*.crt
+secrets/
+credentials.json
+
+# Build caches
+.cache/
+__pycache__/
+node_modules/
+target/
+
+# Logs
+*.log
+
+# Temporary files
+/tmp/
+*.tmp
