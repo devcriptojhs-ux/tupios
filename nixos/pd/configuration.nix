@@ -167,6 +167,12 @@
 
   swapDevices = [ ];
 
+  # === Importar módulos compartilhados ===
+  imports = [ ../modules/permission-manager.nix ];
+
+  # === Permission Manager (Fase 5) ===
+  tupi.permissionManager.enable = true;
+
   # === Segurança Básica (Fase 1) ===
   security.apparmor.enable = true;
   security.sudo.enable = true;
