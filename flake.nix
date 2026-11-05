@@ -34,7 +34,12 @@
         # tupi-ia = nixpkgs.lib.nixosSystem { ... };
 
         # SEC — Safety Core rescue (Fase 3)
-        # tupi-sec = nixpkgs.lib.nixosSystem { ... };
+        tupi-sec = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            ./nixos/sec/configuration.nix
+          ];
+        };
       };
 
       # Development shells
