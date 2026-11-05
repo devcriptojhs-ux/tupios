@@ -46,6 +46,15 @@
             ./nixos/sec/configuration.nix
           ];
         };
+
+        # ISO — Bootable Installer Image (Fase 9)
+        tupi-iso = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+            ./nixos/iso/configuration.nix
+          ];
+        };
       };
 
       # Development shells
