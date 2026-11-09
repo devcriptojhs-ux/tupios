@@ -194,7 +194,7 @@ aprovação. Referência completa em [apps/tupi-agent/HARNESS.md](apps/tupi-agen
 ## Próximos passos
 
 O que já está pronto aparece marcado. O resto é para onde o TUPIOS está indo. Quer ajudar? Escolha um
-item e abra uma issue.
+item, abra uma issue ou mande um PR: todo PR passa pela revisão do mantenedor antes de entrar.
 
 ### 🧠 Second brain do Pajé
 
