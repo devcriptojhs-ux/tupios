@@ -7,6 +7,9 @@ result-*
 # Nix store links
 /nix/
 
+# Imagens ISO geradas (2+ GB — nunca commitar)
+*.iso
+
 # QEMU disk images
 *.img
 *.qcow2

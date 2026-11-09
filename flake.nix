@@ -10,6 +10,16 @@
     let
       supportedSystems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+
+      # Módulos do PD. O ST usa EXATAMENTE os mesmos (mais os ajustes de container), então qualquer
+      # mudança na configuração do PD — inclusive a que a IA está ensaiando — vale igual no ST.
+      pdModules = [
+        ./nixos/pd/configuration.nix
+        {
+          # As entradas do flake ficam no sistema: dá para reconstruir (e ensaiar no ST) sem internet
+          nix.registry.flake-utils.flake = flake-utils;
+        }
+      ];
     in
     {
       # NixOS configurations for each core
@@ -17,17 +27,20 @@
         # PD — Production Domain (Fase 1)
         tupi-pd = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
-          modules = [
-            ./nixos/pd/configuration.nix
-          ];
+          modules = pdModules;
         };
 
-        # ST — Staging Environment (Fase 2)
+        # ST — Staging: o PD rodando como container de ensaio (ligado sob demanda pela IA)
         tupi-st = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
-          modules = [
-            ./nixos/st/configuration.nix
-          ];
+          modules = pdModules ++ [ ./nixos/st/configuration.nix ];
+        };
+
+        # PD na VM de teste: é exatamente o sistema de tupi-pd.config.system.build.vm. Dentro da VM o
+        # executor da IA ensaia/promove ESTA variante (promover o tupi-pd "de disco" quebraria a VM).
+        tupi-pd-vm = {
+          inherit (self.nixosConfigurations.tupi-pd) pkgs;
+          config = self.nixosConfigurations.tupi-pd.config.virtualisation.vmVariant;
         };
 
         # IA — AI Core container (Fase 4)

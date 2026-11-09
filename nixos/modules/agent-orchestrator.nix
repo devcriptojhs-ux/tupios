@@ -89,12 +89,70 @@ let
           db.close()
           return msg_id
 
-      def handle_mcp_request(data):
+      def profile_method(uid, method, params):
+          """Memória do usuário (perfil + observações). O dono vem do SO_PEERCRED, não do pedido."""
+          db = get_db()
+          try:
+              if method == "profile/list":
+                  rows = db.execute("SELECT id, key, value, source, updated_at FROM user_profile WHERE uid=? "
+                                    "ORDER BY updated_at DESC", (uid,)).fetchall()
+                  return {"items": [dict(r) for r in rows]}
+              if method == "profile/set":
+                  key, value = str(params.get("key") or "")[:200], str(params.get("value") or "")[:2000]
+                  if not key or not value:
+                      return {"error": "key e value são obrigatórios"}
+                  db.execute("INSERT INTO user_profile (uid, key, value, source) VALUES (?, ?, ?, ?) "
+                             "ON CONFLICT(uid, key) DO UPDATE SET value=excluded.value, source=excluded.source, "
+                             "updated_at=CURRENT_TIMESTAMP", (uid, key, value, str(params.get("source") or "")[:100]))
+                  db.commit()
+                  return {"ok": True}
+              if method == "profile/delete":
+                  db.execute("DELETE FROM user_profile WHERE uid=? AND id=?", (uid, int(params.get("id") or 0)))
+                  db.commit()
+                  return {"ok": True}
+              if method == "profile/clear":
+                  db.execute("DELETE FROM user_profile WHERE uid=?", (uid,))
+                  db.execute("DELETE FROM observations WHERE uid=?", (uid,))
+                  db.commit()
+                  return {"ok": True}
+              if method == "observe/add":
+                  db.execute("INSERT INTO observations (uid, kind, key, count) VALUES (?, ?, ?, ?) "
+                             "ON CONFLICT(uid, kind, key) DO UPDATE SET count=count+excluded.count, "
+                             "last_seen=CURRENT_TIMESTAMP",
+                             (uid, str(params.get("kind"))[:60], str(params.get("key"))[:200], int(params.get("n") or 1)))
+                  db.commit()
+                  return {"ok": True}
+              if method == "observe/top":
+                  rows = db.execute("SELECT key, count, last_seen FROM observations WHERE uid=? AND kind=? "
+                                    "ORDER BY count DESC LIMIT ?",
+                                    (uid, str(params.get("kind")), int(params.get("limit") or 10))).fetchall()
+                  return {"items": [dict(r) for r in rows]}
+              if method == "observe/summary":
+                  rows = db.execute("SELECT kind, COUNT(*) AS keys, SUM(count) AS total FROM observations "
+                                    "WHERE uid=? GROUP BY kind ORDER BY total DESC", (uid,)).fetchall()
+                  return {"items": [dict(r) for r in rows]}
+              if method == "observe/clear":
+                  if params.get("kind"):
+                      db.execute("DELETE FROM observations WHERE uid=? AND kind=?", (uid, str(params["kind"])))
+                  else:
+                      db.execute("DELETE FROM observations WHERE uid=?", (uid,))
+                  db.commit()
+                  return {"ok": True}
+              return {"error": "Unknown method: " + method}
+          finally:
+              db.close()
+
+      def handle_mcp_request(data, uid=None):
           try:
               req = json.loads(data)
               method = req.get("method", "")
               params = req.get("params", {})
               agent_id = req.get("agent_id", "unknown")
+
+              if method.startswith("profile/") or method.startswith("observe/"):
+                  if uid is None:
+                      return {"error": "identidade do usuário indisponível"}
+                  return profile_method(uid, method, params)
 
               if method == "memory/store":
                   perm = check_permission(agent_id, "write_user_data", "/var/lib/tupi-agents/memory")
@@ -143,17 +201,44 @@ let
       print(f"[AgentOrch] Memory DB: {MEMORY_DB}")
       print(f"[AgentOrch] Retention: {RETENTION_DAYS} days")
 
-      while True:
-          conn, _ = server.accept()
+      import struct, threading
+
+      def read_request(conn):
+          conn.settimeout(10)
+          buf = b""
+          while len(buf) < 1024 * 1024:
+              try:
+                  chunk = conn.recv(65536)
+              except socket.timeout:
+                  break
+              if not chunk:
+                  break
+              buf += chunk
+              try:
+                  json.loads(buf.decode("utf-8"))
+                  break   # pedido completo (clientes antigos não fecham o envio)
+              except ValueError:
+                  continue
+          return buf.decode("utf-8")
+
+      def serve(conn):
           try:
-              data = conn.recv(8192).decode('utf-8')
+              _pid, uid, _gid = struct.unpack("3i", conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                                                                    struct.calcsize("3i")))
+              data = read_request(conn)
               if data:
-                  response = handle_mcp_request(data)
-                  conn.sendall(json.dumps(response).encode('utf-8'))
+                  conn.sendall(json.dumps(handle_mcp_request(data, uid), ensure_ascii=False).encode("utf-8"))
           except Exception as e:
-              conn.sendall(json.dumps({"error": str(e)}).encode('utf-8'))
+              try:
+                  conn.sendall(json.dumps({"error": str(e)}).encode("utf-8"))
+              except OSError:
+                  pass
           finally:
               conn.close()
+
+      while True:
+          conn, _ = server.accept()
+          threading.Thread(target=serve, args=(conn,), daemon=True).start()
     '';
     executable = true;
     destination = "/share/tupi/agent-orchestrator.py";
@@ -198,6 +283,26 @@ let
       );
       CREATE INDEX IF NOT EXISTS idx_mcp_messages_from ON mcp_messages(from_agent);
       CREATE INDEX IF NOT EXISTS idx_mcp_messages_to ON mcp_messages(to_agent);
+
+      -- "O que a IA sabe sobre mim": perfil e hábitos, sempre por usuário (uid)
+      CREATE TABLE IF NOT EXISTS user_profile (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uid INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        source TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(uid, key)
+      );
+      -- Contagens locais do modo proativo (nunca o histórico bruto)
+      CREATE TABLE IF NOT EXISTS observations (
+        uid INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (uid, kind, key)
+      );
     '';
   };
 in
@@ -264,54 +369,63 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    # === Memory Database Directory ===
-    systemd.tmpfiles.rules = [
-      "d /var/lib/tupi-agents 0750 root tupi-ia -"
-      "f ${cfg.memoryDbPath} 0640 root tupi-ia -"
+    assertions = [
+      {
+        assertion = lib.hasPrefix "/run/" cfg.mcpSocketPath;
+        message = "tupi.agentOrchestrator.mcpSocketPath deve ficar dentro de /run/ (é um RuntimeDirectory do systemd).";
+      }
     ];
 
-    # Initialize memory database schema on first boot
-    system.activationScripts.tupi-memory-init = lib.stringAfter [ "var" ] ''
-      mkdir -p /var/lib/tupi-agents
-      if [ ! -f "${cfg.memoryDbPath}" ]; then
-        ${pkgs.sqlite}/bin/sqlite3 "${cfg.memoryDbPath}" < ${memorySchemaSql}
-        chown root:tupi-ia "${cfg.memoryDbPath}"
-        chmod 0640 "${cfg.memoryDbPath}"
-      fi
+    # O grupo usado em tmpfiles, chown e no serviço precisa existir
+    # (sem isso: "chown: invalid group: 'root:tupi-ia'" no boot)
+    users.groups.tupi-ia = { };
+
+    # === Memory Database Directory ===
+    systemd.tmpfiles.rules = [
+      "d ${dirOf cfg.memoryDbPath} 0750 root tupi-ia -"
+    ];
+
+    # Initialize memory database schema. Idempotente (CREATE ... IF NOT EXISTS):
+    # roda a cada ativação, então um arquivo vazio/incompleto é sempre corrigido.
+    system.activationScripts.tupi-memory-init = lib.stringAfter [ "var" "users" "groups" ] ''
+      mkdir -p "${dirOf cfg.memoryDbPath}"
+      chown root:tupi-ia "${dirOf cfg.memoryDbPath}"
+      chmod 0750 "${dirOf cfg.memoryDbPath}"
+      ${pkgs.sqlite}/bin/sqlite3 "${cfg.memoryDbPath}" < ${memorySchemaSql}
+      chown root:tupi-ia "${cfg.memoryDbPath}"
+      chmod 0640 "${cfg.memoryDbPath}"
     '';
 
     # === Agent Orchestrator Service ===
     systemd.services.tupi-agent-orchestrator = {
       description = "TUPIOS Agent Orchestrator - MCP server with Memory Engine";
       wantedBy = [ "multi-user.target" ];
-      after = [ "local-fs.target" "tupi-perm-mgr.service" ];
+      after = [ "local-fs.target" "systemd-tmpfiles-setup.service" "tupi-perm-mgr.service" ];
       wants = [ "tupi-perm-mgr.service" ];
+      environment = {
+        TUPI_MEMORY_DB = cfg.memoryDbPath;
+        TUPI_MCP_SOCKET = cfg.mcpSocketPath;
+        TUPI_MAX_AGENTS = toString cfg.maxAgents;
+        TUPI_RETENTION_DAYS = toString cfg.memoryRetentionDays;
+        TUPI_PERM_SOCKET = "/run/tupi-perm-mgr/perm-mgr.sock";
+      };
       serviceConfig = {
         Type = "simple";
         User = "root";
         Group = "tupi-ia";
+        ExecStart = "${pkgs.python3}/bin/python3 -u ${agentOrchScript}/share/tupi/agent-orchestrator.py";
         Restart = "on-failure";
         RestartSec = "3s";
+        # systemd cria o diretório do socket ANTES de montar o sandbox
+        # (com ProtectSystem=strict, um ReadWritePaths inexistente derruba o serviço)
+        RuntimeDirectory = lib.removePrefix "/run/" (dirOf cfg.mcpSocketPath);
+        RuntimeDirectoryMode = "0750";
         PrivateTmp = true;
         ProtectSystem = "strict";
-        ReadWritePaths = [ "/var/lib/tupi-agents" "/run/tupi-agents" ];
+        ReadWritePaths = [ "-${dirOf cfg.memoryDbPath}" ];
         NoNewPrivileges = false;
-        SystemCallFilter = "@system-service @file-system @network-io @process";
+        SystemCallFilter = [ "@system-service" ];
       };
-      script = ''
-        mkdir -p /run/tupi-agents
-        export TUPI_MEMORY_DB="${cfg.memoryDbPath}"
-        export TUPI_MCP_SOCKET="${cfg.mcpSocketPath}"
-        export TUPI_MAX_AGENTS="${toString cfg.maxAgents}"
-        export TUPI_RETENTION_DAYS="${toString cfg.memoryRetentionDays}"
-        export TUPI_PERM_SOCKET="/run/tupi-perm-mgr/perm-mgr.sock"
-
-        echo "[AgentOrch] Starting MCP server on $TUPI_MCP_SOCKET"
-        echo "[AgentOrch] Memory DB: $TUPI_MEMORY_DB"
-        echo "[AgentOrch] Max agents: $TUPI_MAX_AGENTS"
-
-        ${pkgs.python3}/bin/python3 -u ${agentOrchScript}/share/tupi/agent-orchestrator.py
-      '';
     };
 
     # === MCP Client CLI ===
@@ -320,25 +434,25 @@ in
       jq
       sqlite
       (writeShellScriptBin "tupi-mcp" ''
-        #!/bin/sh
         set -eu
-        SOCKET="''${TUPI_MCP_SOCKET:-/run/tupi-agents/mcp.sock}"
+        SOCKET="''${TUPI_MCP_SOCKET:-${cfg.mcpSocketPath}}"
         METHOD="''${1:-health}"
         AGENT_ID="''${2:-cli}"
-        PARAMS="''${3:-{}}"
+        PARAMS="''${3:-}"
+        [ -n "$PARAMS" ] || PARAMS='{}'
 
         if [ ! -S "$SOCKET" ]; then
           echo '{"error":"Agent Orchestrator not running"}'
           exit 1
         fi
 
-        REQUEST=$(printf '{"method":"%s","agent_id":"%s","params":%s}' "$METHOD" "$AGENT_ID" "$PARAMS")
-        RESPONSE=$(echo "$REQUEST" | ${socat}/bin/socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null || \
+        REQUEST=$(${jq}/bin/jq -cn --arg m "$METHOD" --arg a "$AGENT_ID" --argjson p "$PARAMS" \
+          '{method:$m, agent_id:$a, params:$p}')
+        RESPONSE=$(printf '%s' "$REQUEST" | ${socat}/bin/socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null || \
           echo '{"error":"socket error"}')
         echo "$RESPONSE" | ${jq}/bin/jq .
       '')
       (writeShellScriptBin "tupi-memory" ''
-        #!/bin/sh
         set -eu
         DB="''${TUPI_MEMORY_DB:-/var/lib/tupi-agents/memory.db}"
         CMD="''${1:-list}"

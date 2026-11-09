@@ -107,6 +107,28 @@ Coordinates multiple AI agents with persistent memory and standardized MCP commu
 
 **CLIs:** `tupi-mcp <method> [agent_id] [params]`, `tupi-memory {list|sessions|messages|cleanup}`
 
+### Pajé — main AI and subagent orchestration
+
+The Pajé is the TUPIOS AI the user talks to (app window, quick chat and floating bubble). It can create
+named **subagents** (on its own or on request) and delegate **parallel work** to them. Each subagent has
+its own soul file (`~/.local/share/tupios-ia/paje/agentes/<id>.soul.md`: role, behavior, tools, AI
+connection/model, daily token budget, optional routine) and runs its own agent loop in the per-user
+service `tupi-paje` (up to `tupi.agent.paje.maxParallel` at once).
+
+- Every system action of a subagent goes through `tupi-agent-exec` + Permission Manager, labelled with
+  the subagent's name in approvals and in the audit log. A soul never grants permissions.
+- Subagents cannot create agents, delegate, or promote to the PD; PARAR IA cancels all work.
+- Each agent can use a different model: named connections in `/etc/tupi/ai-config.json` (`conexoes`),
+  selected per request by the AI Router (`tupi_conexao`).
+- A subagent can also have its own provider (URL + API key + model list): connection `ag-<id>`, created
+  from its form or `paje novo … --provedor --url --chave`.
+- Computer use (assisted): `use_computer` (screenshot, click, type, keys…) and `open_file`, category
+  `control_desktop`. It always asks first; a per-conversation grant ends when the user moves the mouse,
+  presses "Devolver o controle", PARAR IA, or after 10 idle minutes. The AI never clicks or types on the
+  Pajé's own windows and never acts while an approval is pending.
+- Harness access: app tabs **Agentes / Trabalhos / Harness**, CLI `paje`, local JSON socket API.
+  Full reference: `apps/tupi-agent/HARNESS.md` (installed at `/etc/tupi/paje/HARNESS.md`).
+
 ### TUPIOS Desktop (Phase 8)
 
 Native Wayland compositor built with Rust + Smithay, currently using Sway as a transitional fallback with full TUPIOS theming.

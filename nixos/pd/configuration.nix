@@ -2,6 +2,14 @@
 # Fase 1: NixOS Personalizado com PD Funcional
 { config, pkgs, lib, ... }:
 
+let
+  # Mudanças que a IA ensaiou no ST e você aprovou (st_promote): mantidas pelo tupi-agent-exec.
+  #   agent-config.json: pacotes, sysctl e parâmetros de boot   agent-extra.nix: trechos de módulo NixOS
+  agentConfigFile = ./agent-config.json;
+  agentConfig = if builtins.pathExists agentConfigFile then lib.importJSON agentConfigFile else { };
+  agentPackage = n:
+    lib.attrByPath (lib.splitString "." n) (throw "agent-config.json: pacote desconhecido '${n}'") pkgs;
+in
 {
   # === Sistema Base ===
   system.stateVersion = "25.05";
@@ -31,12 +39,13 @@
   users.users.tupi = {
     isNormalUser = true;
     description = "TUPIOS User";
-    extraGroups = [ "wheel" "networkmanager" "video" "audio" ];
+    # tupi-ia: configurar a IA (Configurar IA / tupi-ai-setup) sem sudo
+    extraGroups = [ "wheel" "networkmanager" "video" "audio" "tupi-ia" ];
     shell = pkgs.zsh;
   };
 
-  # === Wayland + Compositor Leve (Sway) ===
-  services.displayManager.defaultSession = "sway";
+  # === Sway (sessão alternativa, escolhida na tela de login) ===
+  # A sessão padrão é a área de trabalho estilo Windows (tupi.classicDesktop).
   programs.sway = {
     enable = true;
     wrapperFeatures.gtk = true;
@@ -106,7 +115,13 @@
 
     # TUPIOS tools
     btrfs-progs
-  ];
+  ]
+  # Programas instalados pela IA (ensaiados no ST e aprovados por você)
+  ++ map agentPackage (agentConfig.pacotes or [ ]);
+
+  # Parâmetros do kernel tornados permanentes pela IA (com aprovação)
+  boot.kernel.sysctl = agentConfig.sysctl or { };
+  boot.kernelParams = agentConfig.parametros_kernel or [ ];
 
   # === ZSH como shell padrão ===
   programs.zsh = {
@@ -141,23 +156,34 @@
   #   @var-lib-tupi → /var/lib/tupi-*
   #
   # Montagem declarativa via fileSystems abaixo assume que o instalador
-  # criou os subvolumes corretamente.
+  # (scripts/tupi-partition.sh) criou os subvolumes corretamente.
+
+  # O tupi-partition.sh coloca o Btrfs DENTRO de LUKS (partição GPT "TUPI-ROOT").
+  # Sem isto o initrd não pede a senha, não abre o LUKS e o boot do PD trava
+  # esperando o dispositivo root. Os mounts usam /dev/mapper/tupi-root porque o
+  # LUKS e o Btrfs têm o MESMO label ("tupi-root"): /dev/disk/by-label é ambíguo.
+  boot.initrd.luks.devices."tupi-root" = {
+    device = "/dev/disk/by-partlabel/TUPI-ROOT";
+    allowDiscards = true;
+  };
 
   fileSystems = {
     "/" = {
-      device = "/dev/disk/by-label/tupi-root";
+      device = "/dev/mapper/tupi-root";
       fsType = "btrfs";
       options = [ "subvol=@pd-root" "compress=zstd" "noatime" ];
     };
     "/home" = {
-      device = "/dev/disk/by-label/tupi-root";
+      device = "/dev/mapper/tupi-root";
       fsType = "btrfs";
       options = [ "subvol=@home" "compress=zstd" "noatime" ];
     };
     "/nix/store" = {
-      device = "/dev/disk/by-label/tupi-root";
+      device = "/dev/mapper/tupi-root";
       fsType = "btrfs";
-      options = [ "subvol=@nix-store" "compress=zstd" "noatime" "ro" ];
+      # Sem "ro": o NixOS já remonta /nix/store read-only (boot.readOnlyNixStore)
+      # e só o nix-daemon escreve nele. Com "ro" aqui, nixos-rebuild/nix build quebram.
+      options = [ "subvol=@nix-store" "compress=zstd" "noatime" ];
     };
     "/boot" = {
       device = "/dev/disk/by-label/EFI";
@@ -172,7 +198,30 @@
     ../modules/permission-manager.nix
     ../modules/agent-orchestrator.nix
     ../modules/tupi-desktop.nix
-  ];
+    ../modules/tupi-classic-desktop.nix
+    ../modules/ai-router.nix
+    ../modules/tupi-assistant.nix
+    ../modules/tupi-agent.nix
+    ./vm.nix   # só vale para a VM de teste (nixos-rebuild build-vm / system.build.vm)
+  ]
+  # trechos de configuração NixOS que a IA ensaiou no ST e você aprovou
+  ++ lib.optional (builtins.pathExists ./agent-extra.nix) ./agent-extra.nix;
+
+  # === IA como agente: RESTRITA por padrão ===
+  # Mudar: app → "Permissões da IA", `tupi-agent policy`, ou aqui (tupi.agent.mode /
+  # tupi.agent.policyOverrides). Mudanças de sistema pedidas à IA são ENSAIADAS no ST (container com
+  # esta mesma configuração), mostradas como diff e só aplicadas aqui com a sua aprovação, com ponto
+  # de retorno (geração anterior + snapshot Btrfs). Ficam em ./agent-config.json e ./agent-extra.nix.
+  tupi.agent.enable = true;
+
+  # === ST: ambiente de ensaio (container sob demanda, sem rede e sem o seu /home) ===
+  tupi.st.enable = true;
+
+  # === IA por API (sobe no boot em 127.0.0.1:8080) ===
+  # Depois de instalar: menu Iniciar → "Configurar IA" (ou `tupi-ai-setup`).
+  tupi.aiRouter.enable = true;
+  # App do Pajé, a IA do TUPIOS (estilo ChatGPT) + bolinha flutuante sempre visível
+  tupi.assistant.enable = true;
 
   # === Permission Manager (Fase 5) ===
   tupi.permissionManager.enable = true;
@@ -180,8 +229,13 @@
   # === Agent Orchestrator (Fase 7) ===
   tupi.agentOrchestrator.enable = true;
 
-  # === TUPIOS Native Desktop (Fase 8) ===
-  tupi.desktop.enable = true;
+  # === Área de trabalho ===
+  # Padrão: estilo Windows (XFCE, barra embaixo, menu Iniciar) — o mesmo da ISO.
+  # O desktop nativo Sway (Fase 8) continua disponível: troque os dois valores
+  # abaixo. Os dois juntos não: o tupi.desktop força variáveis Wayland
+  # (GDK_BACKEND=wayland etc.) que quebram os apps na sessão X11 do XFCE.
+  tupi.classicDesktop.enable = true;
+  tupi.desktop.enable = false;
 
   # === Segurança Básica (Fase 1) ===
   security.apparmor.enable = true;

@@ -5,15 +5,22 @@
 
 let
   cfg = config.tupi.permissionManager;
+
+  socketPath = "/run/tupi-perm-mgr/perm-mgr.sock";
+
+  # O daemon vive no Nix store (apps/tupi-agent/tupi_agent/permd.py), junto com a política
+  # (policy.py). NUNCA escrever scripts em /run/current-system na ativação: foi isso que
+  # quebrou o boot da ISO v3.
+  agentPkg = import ./tupi-agent-package.nix { inherit pkgs; };
 in
 {
   options.tupi.permissionManager = {
     enable = lib.mkEnableOption "TUPIOS Permission Manager";
 
     policyFile = lib.mkOption {
-      type = lib.types.path;
-      default = "${config.environment.etc."tupi/permission-policy.json".source}";
-      description = "Path to permission policy JSON file (auto-resolved from etc activation)";
+      type = lib.types.str;
+      default = "/etc/tupi/permission-policy.json";
+      description = "Path to permission policy JSON file";
     };
 
     auditLogPath = lib.mkOption {
@@ -36,221 +43,61 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # O grupo usado em tmpfiles, chown e no serviço precisa existir
+    users.groups.tupi-ia = { };
+
     # === Audit Log Directory (append-only) ===
     systemd.tmpfiles.rules = [
-      "d /var/log/tupi-audit 0750 root tupi-ia -"
+      "d ${dirOf cfg.auditLogPath} 0750 root tupi-ia -"
       "f ${cfg.auditLogPath} 0640 root tupi-ia -"
     ];
 
-    # Make audit log append-only via filesystem attribute
-    system.activationScripts.tupi-audit-immutable = lib.stringAfter [ "var" ] ''
-      mkdir -p /var/log/tupi-audit
+    # Make audit log append-only via filesystem attribute (best effort: some
+    # filesystems do not support chattr; never fail activation because of it)
+    system.activationScripts.tupi-audit-immutable = lib.stringAfter [ "var" "users" "groups" ] ''
+      mkdir -p "${dirOf cfg.auditLogPath}"
       touch "${cfg.auditLogPath}"
-      chown root:tupi-ia "${cfg.auditLogPath}" 2>/dev/null || true
+      chown root:tupi-ia "${dirOf cfg.auditLogPath}" "${cfg.auditLogPath}" 2>/dev/null || true
+      chmod 0750 "${dirOf cfg.auditLogPath}" 2>/dev/null || true
       chmod 0640 "${cfg.auditLogPath}" 2>/dev/null || true
-      chattr +a "${cfg.auditLogPath}" 2>/dev/null || true
+      ${pkgs.e2fsprogs}/bin/chattr +a "${cfg.auditLogPath}" 2>/dev/null || true
     '';
 
     # === Permission Manager Service ===
     systemd.services.tupi-perm-mgr = {
       description = "TUPIOS Permission Manager — validates AI operations against policy";
       wantedBy = [ "multi-user.target" ];
-      after = [ "local-fs.target" ];
+      after = [ "local-fs.target" "systemd-tmpfiles-setup.service" ];
+      path = [ pkgs.e2fsprogs ];
+      environment = {
+        PYTHONPATH = "${agentPkg}/lib/python";
+        TUPI_POLICY = cfg.policyFile;
+        TUPI_AUDIT_LOG = cfg.auditLogPath;
+        TUPI_AUTO_APPROVE_READONLY = if cfg.autoApproveReadonly then "1" else "0";
+        TUPI_MAX_CONCURRENT = toString cfg.maxConcurrentRequests;
+        TUPI_SOCKET = socketPath;
+        TUPI_AGENT_BASE_POLICY = "/etc/tupi/agent-base-policy.json";
+        TUPI_AGENT_POLICY = "/etc/tupi/agent-policy.json";
+      };
       serviceConfig = {
         Type = "simple";
         User = "root";
         Group = "tupi-ia";
+        ExecStart = "${pkgs.python3}/bin/python3 -u -m tupi_agent.permd";
         Restart = "on-failure";
         RestartSec = "3s";
+        # systemd cria /run/tupi-perm-mgr ANTES de montar o sandbox
+        # (com ProtectSystem=strict, um ReadWritePaths inexistente derruba o serviço)
+        RuntimeDirectory = "tupi-perm-mgr";
+        RuntimeDirectoryMode = "0750";
         PrivateTmp = true;
         ProtectSystem = "strict";
-        ReadWritePaths = [ "/var/log/tupi-audit" "/run/tupi-perm-mgr" ];
-        NoNewPrivileges = false; # Needs to manage other services
-        SystemCallFilter = "@system-service @file-system @network-io @process";
+        # /etc/tupi: grava a política de runtime SÓ a pedido humano (policy_set)
+        ReadWritePaths = [ "-${dirOf cfg.auditLogPath}" "-/etc/tupi" ];
+        NoNewPrivileges = true;
+        SystemCallFilter = [ "@system-service" ];
       };
-      script = ''
-        mkdir -p /run/tupi-perm-mgr
-        export TUPI_POLICY="${cfg.policyFile}"
-        export TUPI_AUDIT_LOG="${cfg.auditLogPath}"
-        export TUPI_AUTO_APPROVE_READONLY="${if cfg.autoApproveReadonly then "1" else "0"}"
-        export TUPI_MAX_CONCURRENT="${toString cfg.maxConcurrentRequests}"
-        export TUPI_SOCKET="/run/tupi-perm-mgr/perm-mgr.sock"
-
-        echo "[PermMgr] Starting on $TUPI_SOCKET"
-        ${pkgs.python3}/bin/python3 -u /run/current-system/sw/share/tupi/perm-mgr.py
-      '';
     };
-
-    # === Permission Manager Python Implementation ===
-    system.activationScripts.tupi-perm-mgr-script = lib.stringAfter [ "etc" ] ''
-      mkdir -p /run/current-system/sw/share/tupi
-      cat > /run/current-system/sw/share/tupi/perm-mgr.py << 'PERMMGR_EOF'
-#!/usr/bin/env python3
-"""TUPIOS Permission Manager — validates AI operations against declarative policy."""
-import json, os, sys, socket, struct, time, hashlib, hmac
-from pathlib import Path
-
-POLICY_PATH = os.environ.get("TUPI_POLICY", "/etc/tupi/permission-policy.json")
-AUDIT_LOG = os.environ.get("TUPI_AUDIT_LOG", "/var/log/tupi-audit/permission.log")
-AUTO_APPROVE_RO = os.environ.get("TUPI_AUTO_APPROVE_READONLY", "1") == "1"
-MAX_CONCURRENT = int(os.environ.get("TUPI_MAX_CONCURRENT", "10"))
-SOCKET_PATH = os.environ.get("TUPI_SOCKET", "/run/tupi-perm-mgr/perm-mgr.sock")
-
-# Operation categories and their risk levels
-RISK_LEVELS = {
-    "read": 0,
-    "write_user_data": 1,
-    "write_system_config": 2,
-    "install_package": 2,
-    "network_egress": 1,
-    "execute_binary": 2,
-    "modify_bootloader": 3,
-    "access_hardware": 3,
-    "privilege_escalation": 3,
-    "delete_system_file": 3,
-}
-
-def load_policy():
-    try:
-        with open(POLICY_PATH) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"default_action": "deny", "rules": []}
-
-def classify_operation(op_type, target_path=None):
-    """Classify an operation into a risk category."""
-    op = op_type.lower()
-    if op in ("read", "list", "stat", "cat"):
-        return "read"
-    elif op in ("write", "create", "mkdir"):
-        if target_path and ("/home/" in target_path or "/var/lib/tupi-st/" in target_path):
-            return "write_user_data"
-        return "write_system_config"
-    elif op in ("install", "nix-build", "nix-env"):
-        return "install_package"
-    elif op in ("curl", "wget", "fetch", "http"):
-        return "network_egress"
-    elif op in ("exec", "run", "spawn"):
-        return "execute_binary"
-    elif op in ("bootctl", "systemd-boot", "grub"):
-        return "modify_bootloader"
-    elif op in ("sysfs", "dev", "hw"):
-        return "access_hardware"
-    elif op in ("sudo", "su", "setuid", "cap_"):
-        return "privilege_escalation"
-    elif op in ("rm", "delete", "unlink"):
-        if target_path and ("/nix/store" in target_path or "/etc" in target_path):
-            return "delete_system_file"
-        return "write_user_data"
-    return "write_system_config"
-
-def check_policy(policy, category, agent_id="unknown"):
-    """Check if operation is allowed by policy."""
-    # Check specific rules first
-    for rule in policy.get("rules", []):
-        if rule.get("category") == category:
-            if rule.get("agents") and agent_id not in rule["agents"]:
-                continue
-            return rule.get("action", "deny")
-
-    # Fall back to default
-    return policy.get("default_action", "deny")
-
-def audit_log(agent_id, operation, category, decision, reason=""):
-    """Append to immutable audit log."""
-    timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    entry = {
-        "timestamp": timestamp,
-        "agent_id": agent_id,
-        "operation": operation,
-        "category": category,
-        "decision": decision,
-        "reason": reason,
-        "hash": ""
-    }
-    line = json.dumps(entry, separators=(',', ':'))
-
-    # Chain hash for tamper detection
-    try:
-        with open(AUDIT_LOG, 'r') as f:
-            last_line = f.readlines()[-1].strip() if f.readable() else ""
-        prev_hash = json.loads(last_line).get("hash", "genesis") if last_line else "genesis"
-    except:
-        prev_hash = "genesis"
-
-    entry["hash"] = hashlib.sha256(f"{prev_hash}:{line}".encode()).hexdigest()[:16]
-
-    # Temporarily remove append-only to write
-    os.system(f"chattr -a '{AUDIT_LOG}' 2>/dev/null")
-    with open(AUDIT_LOG, 'a') as f:
-        f.write(json.dumps(entry, separators=(',', ':')) + "\n")
-    os.system(f"chattr +a '{AUDIT_LOG}' 2>/dev/null")
-
-def handle_request(data):
-    """Process a permission request."""
-    try:
-        req = json.loads(data)
-        agent_id = req.get("agent_id", "unknown")
-        operation = req.get("operation", "")
-        target = req.get("target", "")
-
-        category = classify_operation(operation, target)
-        policy = load_policy()
-
-        # Auto-approve read-only if configured
-        if AUTO_APPROVE_RO and category == "read":
-            decision = "allow"
-            reason = "auto-approved: read-only"
-        else:
-            action = check_policy(policy, category, agent_id)
-            if action == "allow":
-                decision = "allow"
-                reason = "policy: explicit allow"
-            elif action == "ask":
-                decision = "pending"
-                reason = "requires user approval"
-            else:
-                decision = "deny"
-                reason = f"policy: denied (category={category})"
-
-        audit_log(agent_id, operation, category, decision, reason)
-
-        return json.dumps({
-            "decision": decision,
-            "category": category,
-            "reason": reason,
-            "request_id": req.get("request_id", "")
-        })
-    except Exception as e:
-        return json.dumps({"decision": "deny", "reason": f"error: {str(e)}"})
-
-# Unix socket server
-if os.path.exists(SOCKET_PATH):
-    os.unlink(SOCKET_PATH)
-
-server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-server.bind(SOCKET_PATH)
-os.chmod(SOCKET_PATH, 0o660)
-server.listen(MAX_CONCURRENT)
-
-print(f"[PermMgr] Listening on {SOCKET_PATH}")
-print(f"[PermMgr] Policy: {POLICY_PATH}")
-print(f"[PermMgr] Audit: {AUDIT_LOG}")
-
-while True:
-    conn, _ = server.accept()
-    try:
-        data = conn.recv(4096).decode('utf-8')
-        if data:
-            response = handle_request(data)
-            conn.sendall(response.encode('utf-8'))
-    except Exception as e:
-        conn.sendall(json.dumps({"decision": "deny", "reason": str(e)}).encode('utf-8'))
-    finally:
-        conn.close()
-PERMMGR_EOF
-      chmod 755 /run/current-system/sw/share/tupi/perm-mgr.py
-    '';
 
     # === Default Permission Policy ===
     environment.etc."tupi/permission-policy.json".text = builtins.toJSON {
@@ -316,9 +163,8 @@ PERMMGR_EOF
       socat
       jq
       (writeShellScriptBin "tupi-perm-check" ''
-        #!/bin/sh
         set -eu
-        SOCKET="/run/tupi-perm-mgr/perm-mgr.sock"
+        SOCKET="${socketPath}"
         AGENT_ID="''${1:-cli}"
         OPERATION="''${2:-read}"
         TARGET="''${3:-}"
@@ -328,19 +174,19 @@ PERMMGR_EOF
           exit 1
         fi
 
-        REQUEST=$(printf '{"agent_id":"%s","operation":"%s","target":"%s","request_id":"%s"}' \
-          "$AGENT_ID" "$OPERATION" "$TARGET" "$(date +%s%N)")
+        REQUEST=$(${jq}/bin/jq -cn \
+          --arg a "$AGENT_ID" --arg o "$OPERATION" --arg t "$TARGET" --arg r "$(date +%s%N)" \
+          '{agent_id:$a, operation:$o, target:$t, request_id:$r}')
 
-        RESPONSE=$(echo "$REQUEST" | ${pkgs.socat}/bin/socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null || \
+        RESPONSE=$(printf '%s' "$REQUEST" | ${socat}/bin/socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null || \
                    echo '{"decision":"deny","reason":"socket error"}')
         echo "$RESPONSE"
       '')
       # Pre-commit hook that validates all pending operations through Permission Manager
       (writeShellScriptBin "tupi-harness-validate" ''
-        #!/bin/sh
         set -eu
         MANIFEST="''${1:-/var/lib/tupi-st/pending-manifest.json}"
-        SOCKET="/run/tupi-perm-mgr/perm-mgr.sock"
+        SOCKET="${socketPath}"
 
         if [ ! -f "$MANIFEST" ]; then
           echo "No pending manifest found"
@@ -352,18 +198,21 @@ PERMMGR_EOF
         DENIED=0
         PENDING=0
 
-        ${pkgs.jq}/bin/jq -r '.operations[] | "\(.type) \(.target)"' "$MANIFEST" 2>/dev/null | while read OP TARGET; do
-          RESULT=$(${pkgs.socat}/bin/socat - UNIX-CONNECT:"$SOCKET" <<< \
-            "{\"agent_id\":\"harness\",\"operation\":\"$OP\",\"target\":\"$TARGET\"}" 2>/dev/null || \
+        # Process substitution (não pipe) para os contadores sobreviverem ao loop
+        while read -r OP TARGET; do
+          [ -n "$OP" ] || continue
+          REQUEST=$(${jq}/bin/jq -cn --arg o "$OP" --arg t "$TARGET" \
+            '{agent_id:"harness", operation:$o, target:$t}')
+          RESULT=$(printf '%s' "$REQUEST" | ${socat}/bin/socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null || \
             echo '{"decision":"deny"}')
 
-          DECISION=$(echo "$RESULT" | ${pkgs.jq}/bin/jq -r '.decision')
+          DECISION=$(echo "$RESULT" | ${jq}/bin/jq -r '.decision // "deny"' 2>/dev/null || echo deny)
           case "$DECISION" in
             allow) echo "  ✅ $OP $TARGET" ;;
             pending) echo "  ⏳ $OP $TARGET (awaiting approval)"; PENDING=$((PENDING+1)) ;;
-            deny) echo "  ❌ $OP $TARGET"; DENIED=$((DENIED+1)) ;;
+            *) echo "  ❌ $OP $TARGET"; DENIED=$((DENIED+1)) ;;
           esac
-        done
+        done < <(${jq}/bin/jq -r '.operations[] | "\(.type) \(.target)"' "$MANIFEST" 2>/dev/null || true)
 
         if [ "$DENIED" -gt 0 ]; then
           echo "[Harness] ❌ Validation FAILED: $DENIED operations denied"
